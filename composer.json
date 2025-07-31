@@ -1,0 +1,12 @@
+{
+    "name": "dykrasni/wp-tgcomment",
+    "authors": [
+        {
+            "name": "Дмитрий Красников",
+            "email": "dmitry.krasnikov@gmail.com"
+        }
+    ],
+    "require": {
+        "afragen/wp-dependency-installer": "^4.2"
+    }
+} 

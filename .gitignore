@@ -1,0 +1,48 @@
+vendor/
+.cursor/
+
+# Example files with private data
+example.json
+example2.json
+
+# WordPress
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/backups/
+wp-content/upgrade/
+wp-content/backup-db/
+
+# Plugin specific
+composer.lock
+.DS_Store
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Node.js (если будет фронтенд)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

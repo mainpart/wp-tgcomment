@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Codestar/codestar-framework",
+    "host": "github",
+    "slug": "codestar-framework/codestar-framework.php",
+    "uri": "mainpart/codestar-framework",
+    "branch": "master",
+    "required": true
+  },
+  {
+    "name": "Git Updater",
+    "host": "github",
+    "slug": "git-updater/git-updater.php",
+    "uri": "afragen/git-updater",
+    "branch": "master",
+    "required": true,
+    "token": null
+  },
+  {
+    "name": "Pharma",
+    "host": "github",
+    "slug": "pharma/pharma.php",
+    "uri": "mainpart/pharma",
+    "branch": "master",
+    "required": true
+  },
+  {
+    "name": "dco-comment-attachment",
+    "host": "github",
+    "slug": "dco-comment-attachment/dco-comment-attachment.php",
+    "uri": "yadenis/DCO-Comment-Attachment",
+    "branch": "master",
+    "required": true
+  }
+]
