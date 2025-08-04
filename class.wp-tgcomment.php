@@ -2,7 +2,7 @@
 
 /**
  * Главный класс плагина WP TGComment
- * 
+ *
  * Отвечает за:
  * - Инициализацию плагина и регистрацию хуков WordPress
  * - Управление настройками и опциями плагина
@@ -19,13 +19,13 @@ class WP_TGComment {
 	const TELEGRAM_UPDATES_GET_CRON_HOOK = 'wp_tgcomment_get_updates';
 	const TELEGRAM_UPDATES_INTERVAL = 'wp_tgcomment_every_two_minutes';
 	private static $options = [];
-	
+
 	/**
 	 * Инициализация плагина
-	 * 
+	 *
 	 * Проверяет, что плагин еще не инициализирован, и запускает
 	 * инициализацию всех компонентов и хуков WordPress.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function init() {
@@ -39,10 +39,10 @@ class WP_TGComment {
 
 	/**
 	 * Регистрация всех хуков и действий WordPress
-	 * 
+	 *
 	 * Устанавливает флаг инициализации, загружает настройки и регистрирует
 	 * все необходимые хуки WordPress для работы плагина.
-	 * 
+	 *
 	 * @return void
 	 */
 	private static function init_hooks() {
@@ -63,6 +63,7 @@ class WP_TGComment {
 
 		// Регистрируем обработчик cron события для комментариев
 		add_action( WP_TGComment_Handler::COMMENT_PROCESSOR_CRON_HOOK, [ 'WP_TGComment_Processor', 'process_messages_to_comments' ] );
+		add_action( 'pharma_paidtill_notify', [ 'WP_TGComment_Handler', 'handle_pharma_paidtill_notify' ], 20, 2 );
 
 		// AJAX обработчики для проверки статуса
 		add_action( 'wp_ajax_wp_tgcomment_check_webhook_status', [ self::class, 'ajax_check_webhook_status' ] );
@@ -86,9 +87,9 @@ class WP_TGComment {
 
 	/**
 	 * Инициализация плагина на хуке 'init'
-	 * 
+	 *
 	 * Загружает языковые файлы для интернационализации плагина.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function init_plugin() {
@@ -98,10 +99,10 @@ class WP_TGComment {
 
 	/**
 	 * Подключение скриптов и стилей фронтенда
-	 * 
+	 *
 	 * Регистрирует и подключает CSS и JavaScript файлы для фронтенда
 	 * (в данный момент пустая функция).
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function enqueue_scripts() {
@@ -110,9 +111,9 @@ class WP_TGComment {
 
 	/**
 	 * Получение всех настроек плагина
-	 * 
+	 *
 	 * Возвращает массив с настройками плагина, загруженный при инициализации.
-	 * 
+	 *
 	 * @return array Массив настроек плагина
 	 */
 	public static function get_options() {
@@ -121,10 +122,10 @@ class WP_TGComment {
 
 	/**
 	 * Получение токена Telegram бота
-	 * 
+	 *
 	 * Извлекает токен бота из настроек плагина для использования
 	 * в запросах к Telegram Bot API.
-	 * 
+	 *
 	 * @return string Токен бота или пустая строка если не настроен
 	 */
 	public static function get_telegram_token() {
@@ -134,12 +135,12 @@ class WP_TGComment {
 
 	/**
 	 * Добавление кастомных интервалов для WP Cron
-	 * 
+	 *
 	 * Регистрирует специальные интервалы времени для cron задач плагина:
 	 * - каждые 2 минуты для получения обновлений
 	 * - каждую минуту для обработки комментариев
 	 * - каждую минуту для отправки уведомлений
-	 * 
+	 *
 	 * @param array $schedules Массив существующих расписаний cron
 	 * @return array Расширенный массив расписаний
 	 */
@@ -164,10 +165,10 @@ class WP_TGComment {
 
 	/**
 	 * Обработчик активации плагина
-	 * 
+	 *
 	 * Выполняется при активации плагина. Создает настройки по умолчанию,
 	 * регистрирует cron задачи, создает таблицы базы данных.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function plugin_activation() {
@@ -266,10 +267,10 @@ class WP_TGComment {
 
 	/**
 	 * Обработчик деактивации плагина
-	 * 
+	 *
 	 * Выполняется при деактивации плагина. Удаляет webhook, очищает
 	 * cron задачи, опционально удаляет таблицы.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function plugin_deactivation() {
@@ -305,10 +306,10 @@ class WP_TGComment {
 
 	/**
 	 * Получение обновлений от Telegram API (Polling)
-	 * 
+	 *
 	 * Выполняет запрос к Telegram API для получения новых обновлений
 	 * с использованием long polling. Сохраняет offset последнего обновления.
-	 * 
+	 *
 	 * @return array|false Массив обновлений или false при ошибке
 	 */
 	public static function get_telegram_updates() {
@@ -374,10 +375,10 @@ class WP_TGComment {
 
 	/**
 	 * Обработка всех полученных обновлений от Telegram
-	 * 
+	 *
 	 * Основная функция cron задачи для получения и обработки обновлений.
 	 * Использует блокировку для предотвращения одновременного выполнения.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function process_telegram_updates() {
@@ -414,10 +415,10 @@ class WP_TGComment {
 
 	/**
 	 * Обработка одного обновления от Telegram
-	 * 
+	 *
 	 * Анализирует тип обновления (сообщение, callback query и т.д.)
 	 * и направляет на соответствующий обработчик.
-	 * 
+	 *
 	 * @param array $update Данные обновления от Telegram API
 	 * @return void
 	 */
@@ -445,10 +446,10 @@ class WP_TGComment {
 
 	/**
 	 * Получение информации о статусе cron событий
-	 * 
+	 *
 	 * Возвращает детальную информацию о состоянии cron задачи
 	 * получения обновлений от Telegram.
-	 * 
+	 *
 	 * @return array Массив с информацией о статусе cron
 	 */
 	public static function get_cron_status() {
@@ -466,10 +467,10 @@ class WP_TGComment {
 
 	/**
 	 * Ручной запуск получения обновлений
-	 * 
+	 *
 	 * Позволяет вручную запустить процесс получения обновлений
 	 * для тестирования или устранения неполадок.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function manual_get_updates() {
@@ -479,10 +480,10 @@ class WP_TGComment {
 
 	/**
 	 * Перезапуск cron события получения обновлений
-	 * 
+	 *
 	 * Удаляет существующую cron задачу и создает новую.
 	 * Используется для устранения проблем с расписанием.
-	 * 
+	 *
 	 * @return bool true при успехе, false при ошибке
 	 */
 	public static function reschedule_cron() {
@@ -501,10 +502,10 @@ class WP_TGComment {
 
 	/**
 	 * Принудительная очистка блокировки обработки
-	 * 
+	 *
 	 * Удаляет transient блокировку процесса получения обновлений.
 	 * Используется при зависании процесса.
-	 * 
+	 *
 	 * @return bool true всегда
 	 */
 	public static function clear_processing_lock() {
@@ -516,10 +517,10 @@ class WP_TGComment {
 
 	/**
 	 * Тестирование соединения с Telegram API
-	 * 
+	 *
 	 * Проверяет валидность токена бота и доступность API
 	 * с помощью метода getMe.
-	 * 
+	 *
 	 * @return array Результат тестирования с ключами success, message, bot_info
 	 */
 	public static function test_telegram_connection() {
@@ -566,10 +567,10 @@ class WP_TGComment {
 
 	/**
 	 * Подключение скриптов для админ-панели
-	 * 
+	 *
 	 * Регистрирует JavaScript и CSS для страницы настроек плагина.
 	 * Подключает AJAX обработчики и локализацию.
-	 * 
+	 *
 	 * @param string $hook Идентификатор текущей страницы админки
 	 * @return void
 	 */
@@ -591,10 +592,10 @@ class WP_TGComment {
 
 	/**
 	 * Генерация JavaScript кода для админ-панели
-	 * 
+	 *
 	 * Возвращает встроенный JavaScript для кнопок проверки статуса
 	 * системы в админ-панели.
-	 * 
+	 *
 	 * @return string JavaScript код
 	 */
 	public static function get_admin_javascript() {
@@ -699,10 +700,10 @@ class WP_TGComment {
 
 	/**
 	 * AJAX обработчик проверки статуса webhook
-	 * 
+	 *
 	 * Проверяет права доступа и возвращает информацию о том,
 	 * установлен ли webhook в Telegram.
-	 * 
+	 *
 	 * @return void Завершается wp_send_json_success или wp_send_json_error
 	 */
 	public static function ajax_check_webhook_status() {
@@ -727,10 +728,10 @@ class WP_TGComment {
 
 	/**
 	 * AJAX обработчик проверки статуса cron получения обновлений
-	 * 
+	 *
 	 * Проверяет, запланирована ли cron задача получения обновлений
 	 * и возвращает время следующего запуска.
-	 * 
+	 *
 	 * @return void Завершается wp_send_json_success или wp_send_json_error
 	 */
 	public static function ajax_check_updates_cron_status() {
@@ -756,10 +757,10 @@ class WP_TGComment {
 
 	/**
 	 * AJAX обработчик проверки статуса cron обработки сообщений
-	 * 
+	 *
 	 * Проверяет, запланирована ли cron задача обработки очереди
 	 * входящих сообщений.
-	 * 
+	 *
 	 * @return void Завершается wp_send_json_success или wp_send_json_error
 	 */
 	public static function ajax_check_processor_cron_status() {
@@ -785,10 +786,10 @@ class WP_TGComment {
 
 	/**
 	 * AJAX обработчик проверки статуса cron отправки уведомлений
-	 * 
+	 *
 	 * Проверяет, запланирована ли cron задача отправки уведомлений
 	 * пользователям в Telegram.
-	 * 
+	 *
 	 * @return void Завершается wp_send_json_success или wp_send_json_error
 	 */
 	public static function ajax_check_notifier_cron_status() {
@@ -826,10 +827,10 @@ class WP_TGComment {
 
 	/**
 	 * Регистрация REST API endpoint для webhook
-	 * 
+	 *
 	 * Создает публичный endpoint для приема webhook запросов от Telegram.
 	 * URL: /wp-json/wp-tgcomment/v1/webhook/
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function register_webhook_endpoint() {
@@ -842,10 +843,10 @@ class WP_TGComment {
 
 	/**
 	 * Обработчик webhook запросов от Telegram
-	 * 
+	 *
 	 * Принимает POST запросы от Telegram, валидирует JSON
 	 * и передает обновления в обработчик.
-	 * 
+	 *
 	 * @return void Завершается wp_die с кодом ответа
 	 */
 	public static function handle_webhook_request() {
@@ -879,10 +880,10 @@ class WP_TGComment {
 
 	/**
 	 * Отображение уведомлений в админ-панели
-	 * 
+	 *
 	 * Показывает предупреждения администратору если не настроен
 	 * ни один метод получения обновлений от Telegram.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function show_admin_notices() {
@@ -919,10 +920,10 @@ class WP_TGComment {
 
 	/**
 	 * Получение статуса методов получения обновлений
-	 * 
+	 *
 	 * Анализирует какой метод получения обновлений активен:
 	 * webhook или polling через cron.
-	 * 
+	 *
 	 * @return array Массив с информацией об активных методах
 	 */
 	public static function get_update_method_status() {
@@ -940,10 +941,10 @@ class WP_TGComment {
 
 	/**
 	 * Создание таблицы входящих сообщений
-	 * 
+	 *
 	 * Создает таблицу wp_tgcomments_incoming для хранения
 	 * входящих сообщений от Telegram в очереди обработки.
-	 * 
+	 *
 	 * @return void
 	 */
 	public static function create_incoming_messages_table() {
@@ -988,10 +989,10 @@ class WP_TGComment {
 
 	/**
 	 * Получение информации о webhook от Telegram API
-	 * 
+	 *
 	 * Запрашивает у Telegram API информацию о текущем
 	 * установленном webhook.
-	 * 
+	 *
 	 * @return array Массив с информацией о webhook или ошибке
 	 */
 	public static function get_webhook_info() {
@@ -1043,10 +1044,10 @@ class WP_TGComment {
 
 	/**
 	 * Установка webhook в Telegram
-	 * 
+	 *
 	 * Отправляет запрос к Telegram API для установки webhook
 	 * на endpoint плагина. Требует HTTPS.
-	 * 
+	 *
 	 * @return array Результат операции с ключами success, message, url
 	 */
 	public static function set_webhook() {
@@ -1109,10 +1110,10 @@ class WP_TGComment {
 
 	/**
 	 * Удаление webhook из Telegram
-	 * 
+	 *
 	 * Отправляет запрос к Telegram API для удаления
 	 * установленного webhook.
-	 * 
+	 *
 	 * @return array Результат операции с ключами success, message
 	 */
 	public static function delete_webhook() {
@@ -1163,10 +1164,10 @@ class WP_TGComment {
 
 	/**
 	 * Удаление таблиц плагина при деактивации
-	 * 
+	 *
 	 * Полностью удаляет все таблицы базы данных плагина.
 	 * Используется только если включена соответствующая опция.
-	 * 
+	 *
 	 * @return void
 	 */
 	private static function drop_plugin_tables() {
