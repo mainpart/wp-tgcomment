@@ -23,6 +23,193 @@ class WP_TGComment_Handler {
 	const COMMENT_PROCESSOR_INTERVAL = 'wp_tgcomment_every_minute';
 
 	/**
+	 * Очистка HTML контента от неподдерживаемых Telegram тегов
+	 * 
+	 * Основано на официальной документации Telegram Bot API.
+	 * Оставляет только теги, поддерживаемые parse_mode="HTML".
+	 * Конвертирует неподдерживаемые теги в читаемый текст.
+	 * 
+	 * @param string $content HTML контент для очистки
+	 * @return string Очищенный контент, безопасный для Telegram
+	 */
+	public static function sanitize_telegram_html( $content ) {
+		if ( empty( $content ) ) {
+			return $content;
+		}
+
+		// Поддерживаемые теги согласно официальной документации Telegram Bot API
+		$supported_tags = array(
+			'b' => array(),
+			'strong' => array(),
+			'i' => array(),
+			'em' => array(),
+			'u' => array(),
+			'ins' => array(),
+			's' => array(),
+			'strike' => array(),
+			'del' => array(),
+			'span' => array('class'), // только class="tg-spoiler"
+			'tg-spoiler' => array(),
+			'a' => array('href'),
+			'code' => array(),
+			'pre' => array(),
+			'blockquote' => array('expandable'),
+			'tg-emoji' => array('emoji-id'),
+		);
+
+		// Специальные конверсии для неподдерживаемых тегов
+		$conversions = array(
+			// Списки конвертируем в текст с символами
+			'/<ol[^>]*>/i' => "\n",
+			'/<\/ol>/i' => "\n",
+			'/<ul[^>]*>/i' => "\n", 
+			'/<\/ul>/i' => "\n",
+			'/<li[^>]*>/i' => '• ',
+			'/<\/li>/i' => "\n",
+			
+			// Заголовки конвертируем в жирный текст
+			'/<h[1-6][^>]*>/i' => '<b>',
+			'/<\/h[1-6]>/i' => '</b>' . "\n\n",
+			
+			// Блочные элементы
+			'/<div[^>]*>/i' => '',
+			'/<\/div>/i' => "\n",
+			'/<p[^>]*>/i' => '',
+			'/<\/p>/i' => "\n\n",
+			
+			// Переносы строк
+			'/<br\s*\/?>/i' => "\n",
+			'/<hr\s*\/?>/i' => "\n" . str_repeat('━', 20) . "\n",
+			
+			// Цитаты (если не поддерживается старая версия API)
+			'/<q[^>]*>/i' => '"',
+			'/<\/q>/i' => '"',
+			
+			// Таблицы удаляем полностью
+			'/<table[^>]*>.*?<\/table>/is' => "\n[Таблица не поддерживается]\n",
+			
+			// Опасные теги
+			'/<script[^>]*>.*?<\/script>/is' => '',
+			'/<style[^>]*>.*?<\/style>/is' => '',
+			'/<iframe[^>]*>.*?<\/iframe>/is' => '',
+			'/<object[^>]*>.*?<\/object>/is' => '',
+			'/<embed[^>]*>/i' => '',
+			'/<form[^>]*>.*?<\/form>/is' => '',
+			'/<input[^>]*>/i' => '',
+			'/<textarea[^>]*>.*?<\/textarea>/is' => '',
+			'/<select[^>]*>.*?<\/select>/is' => '',
+			'/<button[^>]*>.*?<\/button>/is' => '',
+		);
+
+		// Применяем конверсии
+		$content = preg_replace( array_keys( $conversions ), array_values( $conversions ), $content );
+
+		// Создаем DOMDocument для более точной очистки
+		$dom = new DOMDocument('1.0', 'UTF-8');
+		libxml_use_internal_errors(true);
+		
+		// Оборачиваем в HTML структуру для корректного парсинга
+		$wrapped_content = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>' . $content . '</body></html>';
+		
+		if ($dom->loadHTML($wrapped_content, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD)) {
+			$body = $dom->getElementsByTagName('body')->item(0);
+			if ($body) {
+				self::clean_unsupported_tags($body, $supported_tags, $dom);
+				
+				// Извлекаем очищенный контент
+				$cleaned = '';
+				foreach ($body->childNodes as $child) {
+					$cleaned .= $dom->saveHTML($child);
+				}
+				$content = $cleaned;
+			}
+		}
+		
+		libxml_clear_errors();
+
+		// Финальная очистка
+		$content = self::final_cleanup($content);
+		
+		return $content;
+	}
+
+	/**
+	 * Рекурсивная очистка неподдерживаемых тегов
+	 */
+	private static function clean_unsupported_tags($node, $supported_tags, $dom) {
+		$nodes_to_remove = array();
+		
+		foreach ($node->childNodes as $child) {
+			if ($child->nodeType === XML_ELEMENT_NODE) {
+				$tag_name = strtolower($child->tagName);
+				
+				if (isset($supported_tags[$tag_name])) {
+					// Тег поддерживается - очищаем атрибуты
+					$allowed_attrs = $supported_tags[$tag_name];
+					$attrs_to_remove = array();
+					
+					if ($child->hasAttributes()) {
+						foreach ($child->attributes as $attr) {
+							$attr_name = strtolower($attr->name);
+							
+							// Специальная проверка для span class="tg-spoiler"
+							if ($tag_name === 'span' && $attr_name === 'class') {
+								if (trim($attr->value) !== 'tg-spoiler') {
+									$attrs_to_remove[] = $attr_name;
+								}
+							} 
+							// Для остальных тегов проверяем белый список
+							elseif (!in_array($attr_name, $allowed_attrs)) {
+								$attrs_to_remove[] = $attr_name;
+							}
+						}
+					}
+					
+					// Удаляем неразрешенные атрибуты
+					foreach ($attrs_to_remove as $attr_name) {
+						$child->removeAttribute($attr_name);
+					}
+					
+					// Рекурсивно очищаем дочерние элементы
+					self::clean_unsupported_tags($child, $supported_tags, $dom);
+				} else {
+					// Тег не поддерживается - заменяем содержимым
+					$nodes_to_remove[] = $child;
+				}
+			}
+		}
+		
+		// Заменяем неподдерживаемые узлы их содержимым
+		foreach ($nodes_to_remove as $node_to_remove) {
+			while ($node_to_remove->firstChild) {
+				$node->insertBefore($node_to_remove->firstChild, $node_to_remove);
+			}
+			$node->removeChild($node_to_remove);
+		}
+	}
+
+	/**
+	 * Финальная очистка текста
+	 */
+	private static function final_cleanup($content) {
+		// Экранируем специальные HTML символы
+		$content = str_replace(array('&lt;', '&gt;', '&amp;'), array('<', '>', '&'), $content);
+		
+		// Убираем лишние переносы строк
+		$content = preg_replace('/\n{3,}/', "\n\n", $content);
+		
+		// Убираем пробелы в начале и конце строк
+		$lines = explode("\n", $content);
+		$lines = array_map('trim', $lines);
+		$content = implode("\n", $lines);
+		
+		// Убираем лишние пробелы вокруг bullet points
+		$content = preg_replace('/\n+• /', "\n• ", $content);
+		
+		return trim($content);
+	}
+
+	/**
 	 * Основная функция обработки входящих сообщений от Telegram
 	 * 
 	 * Определяет тип сообщения (команда или обычное сообщение) и направляет
@@ -196,7 +383,7 @@ class WP_TGComment_Handler {
 		foreach ( $comments as $comment ) {
 			$author_name = $comment->comment_author;
 			$date = date( 'd.m.Y H:i', strtotime( $comment->comment_date ) );
-			$content = $comment->comment_content;
+			$content = self::sanitize_telegram_html( $comment->comment_content );
 
 			// Проверяем есть ли вложения
 			$attachment_ids = get_comment_meta( $comment->comment_ID, 'attachment_id', true );
@@ -808,13 +995,19 @@ class WP_TGComment_Handler {
 			return null;
 		}
 
-		$chat_id = $message['chat']['id'];
-		error_log( "WP TGComment Handler: 🔍 ПОИСК СВЯЗАННОГО КОММЕНТАРИЯ:" );
-		error_log( "  - Chat ID: {$chat_id}" );
-		error_log( "  - Отвечающий Telegram User ID: {$telegram_user_id}" );
-		error_log( "  - Отвечающий WP User: {$wp_user->display_name} (ID: {$wp_user->ID})" );
-		error_log( "  - Исходное сообщение от Telegram ID: {$replied_message_from_id}" );
-		error_log( "  - Ищем Telegram Message ID: {$telegram_message_id}" );
+			$chat_id = $message['chat']['id'];
+	
+	// Получаем текст отправляемого сообщения
+	$current_message_text = isset($message['text']) ? substr($message['text'], 0, 100) : '[нет текста]';
+	if (strlen($message['text'] ?? '') > 100) {
+		$current_message_text .= '...';
+	}
+	
+	error_log( "WP TGComment Handler: 🔍 ПОИСК СВЯЗАННОГО КОММЕНТАРИЯ:" );
+	error_log( "  - Chat ID: {$chat_id}" );
+	error_log( "  - Отвечающий WP User: {$wp_user->display_name} (ID: {$wp_user->ID})" );
+	error_log( "  - Отправляемое сообщение: {$current_message_text}" );
+	error_log( "  - Исходное сообщение от Telegram ID: {$replied_message_from_id}" );
 
 		// Получаем все посты в которых пользователь участвует
 		$user_posts = self::get_user_related_posts( $wp_user->ID );
@@ -856,10 +1049,16 @@ class WP_TGComment_Handler {
 			];
 			$comments = $query->query($args);
 
-			if ( ! empty( $comments ) ) {
-				$comment = $comments[0];
-				error_log( "  - ✅ Найден комментарий #{$comment->comment_ID} пользователя по tg_incoming_message_id" );
-				return $comment->comment_post_ID;
+					if ( ! empty( $comments ) ) {
+			$comment = $comments[0];
+			$comment_text = substr(strip_tags($comment->comment_content), 0, 100);
+			if (strlen(strip_tags($comment->comment_content)) > 100) {
+				$comment_text .= '...';
+			}
+			error_log( "  - ✅ Найден комментарий #{$comment->comment_ID} пользователя по tg_incoming_message_id" );
+			error_log( "  - Автор найденного комментария: {$comment->comment_author}" );
+			error_log( "  - Текст найденного комментария: {$comment_text}" );
+			return $comment->comment_post_ID;
 			} else {
 				// Если не найдено в комментариях, ищем в таблице incoming
 				error_log( "  - Поиск в таблице incoming messages" );
@@ -899,10 +1098,16 @@ class WP_TGComment_Handler {
 			];
 			$comments = $query->query($args);
 
-			if ( ! empty( $comments ) ) {
-				$comment = $comments[0];
-				error_log( "  - ✅ Найден комментарий #{$comment->comment_ID} другого пользователя по tg_outgoing_message_id" );
-				return $comment->comment_post_ID;
+					if ( ! empty( $comments ) ) {
+			$comment = $comments[0];
+			$comment_text = substr(strip_tags($comment->comment_content), 0, 100);
+			if (strlen(strip_tags($comment->comment_content)) > 100) {
+				$comment_text .= '...';
+			}
+			error_log( "  - ✅ Найден комментарий #{$comment->comment_ID} другого пользователя по tg_outgoing_message_id" );
+			error_log( "  - Автор найденного комментария: {$comment->comment_author}" );
+			error_log( "  - Текст найденного комментария: {$comment_text}" );
+			return $comment->comment_post_ID;
 			}
 		}
 
