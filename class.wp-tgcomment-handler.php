@@ -383,7 +383,7 @@ class WP_TGComment_Handler {
 		foreach ( $comments as $comment ) {
 			$author_name = $comment->comment_author;
 			$date = date( 'd.m.Y H:i', strtotime( $comment->comment_date ) );
-			$content = self::sanitize_telegram_html( $comment->comment_content );
+			$content = $comment->comment_content;
 
 			// Проверяем есть ли вложения
 			$attachment_ids = get_comment_meta( $comment->comment_ID, 'attachment_id', true );
@@ -612,10 +612,11 @@ class WP_TGComment_Handler {
 	 * Отправка сообщения в Telegram через Bot API
 	 * 
 	 * Отправляет текстовое сообщение с опциональной клавиатурой.
-	 * Поддерживает HTML разметку. Сохраняет связь с комментарием WordPress.
+	 * Автоматически очищает HTML от неподдерживаемых тегов. При ошибке парсинга 
+	 * HTML пытается отправить сообщение без форматирования. Сохраняет связь с комментарием WordPress.
 	 * 
 	 * @param int        $chat_id    ID чата в Telegram
-	 * @param string     $text       Текст сообщения (поддерживает HTML)
+	 * @param string     $text       Текст сообщения (может содержать HTML)
 	 * @param array|null $keyboard   Массив inline клавиатуры (опционально)
 	 * @param int|null   $comment_id ID комментария WordPress для связи (опционально)
 	 * @return int|false ID отправленного сообщения в Telegram или false при ошибке
@@ -634,11 +635,14 @@ class WP_TGComment_Handler {
 			$text = mb_convert_encoding( $text, 'UTF-8', mb_detect_encoding( $text ) );
 		}
 
+		// Применяем санитизацию HTML для Telegram
+		$sanitized_text = self::sanitize_telegram_html( $text );
+
 		$url = "https://api.telegram.org/bot{$token}/sendMessage";
 
 		$data = array(
 			'chat_id' => $chat_id,
-			'text' => $text,
+			'text' => $sanitized_text,
 			'parse_mode' => 'HTML'
 		);
 
@@ -661,14 +665,28 @@ class WP_TGComment_Handler {
 		$result = json_decode( $body, true );
 
 		if ( ! $result || ! isset( $result['ok'] ) || ! $result['ok'] ) {
-			error_log( 'WP TGComment Handler: Неверный ответ API при отправке. Код:' . $code . ' Ответ:' . $body );
+			// Проверяем, связана ли ошибка с HTML тегами
+			if ( $code === 400 && isset( $result['description'] ) && 
+				 ( strpos( $result['description'], "can't parse entities" ) !== false ||
+				   strpos( $result['description'], "Bad Request" ) !== false ) ) {
+				
+				// Пытаемся отправить через fallback метод
+				$fallback_result = self::send_message_fallback( $chat_id, $text, $keyboard, $url, $result['description'] );
+				if ( $fallback_result ) {
+					$result = $fallback_result; // Используем результат fallback отправки
+				} else {
+					return false;
+				}
+			} else {
+				error_log( 'WP TGComment Handler: Неверный ответ API при отправке. Код:' . $code . ' Ответ:' . $body );
 
-			// Специальная обработка для 403 - бот заблокирован пользователем
-			if ( $code === 403 ) {
-				do_action('wp_tg_sendmessage_403', $chat_id);
+				// Специальная обработка для 403 - бот заблокирован пользователем
+				if ( $code === 403 ) {
+					do_action('wp_tg_sendmessage_403', $chat_id);
+				}
+
+				return false;
 			}
-
-			return false;
 		}
 		//error_log( "WP TGComment Handler: ".var_export($result, true) );
 		$telegram_message_id = $result['result']['message_id'];
@@ -681,6 +699,58 @@ class WP_TGComment_Handler {
 		}
 
 		return $telegram_message_id;
+	}
+
+	/**
+	 * Fallback отправка сообщения без HTML форматирования
+	 * 
+	 * Убирает все HTML теги и отправляет сообщение как обычный текст
+	 * при ошибках парсинга HTML в основном методе отправки.
+	 * 
+	 * @param int         $chat_id     ID чата в Telegram
+	 * @param string      $text        Оригинальный текст сообщения
+	 * @param array|null  $keyboard    Массив inline клавиатуры (опционально)
+	 * @param string      $url         URL для отправки к Telegram API
+	 * @param string      $error_msg   Сообщение об ошибке для логирования
+	 * @return array|false Результат API ответа или false при ошибке
+	 */
+	private static function send_message_fallback( $chat_id, $text, $keyboard, $url, $error_msg ) {
+		error_log( 'WP TGComment Handler: Ошибка парсинга HTML, пробуем отправить без тегов. Ошибка: ' . $error_msg );
+		
+		// Убираем все HTML теги и пробуем отправить еще раз
+		$plain_text = wp_strip_all_tags( $text );
+		
+		$fallback_data = array(
+			'chat_id' => $chat_id,
+			'text' => $plain_text,
+			'parse_mode' => null // Убираем parse_mode
+		);
+
+		if ( $keyboard ) {
+			$fallback_data['reply_markup'] = json_encode( $keyboard );
+		}
+
+		$fallback_response = wp_remote_post( $url, array(
+			'body' => $fallback_data,
+			'timeout' => 15
+		) );
+
+		if ( is_wp_error( $fallback_response ) ) {
+			error_log( 'WP TGComment Handler: ❌ Fallback отправка завершилась ошибкой: ' . $fallback_response->get_error_message() );
+			return false;
+		}
+
+		$fallback_code = wp_remote_retrieve_response_code( $fallback_response );
+		$fallback_body = wp_remote_retrieve_body( $fallback_response );
+		$fallback_result = json_decode( $fallback_body, true );
+
+		if ( $fallback_result && isset( $fallback_result['ok'] ) && $fallback_result['ok'] ) {
+			error_log( 'WP TGComment Handler: ✅ Сообщение отправлено после удаления HTML тегов' );
+			return $fallback_result;
+		} else {
+			error_log( 'WP TGComment Handler: ❌ Fallback отправка тоже не удалась. Код:' . $fallback_code . ' Ответ:' . $fallback_body );
+			return false;
+		}
 	}
 
 	/**

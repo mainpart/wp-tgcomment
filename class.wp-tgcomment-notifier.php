@@ -330,7 +330,7 @@ class WP_TGComment_Notifier {
 		$author_name = $comment_author ? $comment_author->display_name : 'Неизвестный пользователь';
 		$message_text = "💬 \"{$post->post_title}\"\n";
 		$message_text .= "👤 Автор: {$author_name}\n\n";
-		$message_text .= WP_TGComment_Handler::sanitize_telegram_html( $comment->comment_content );
+		$message_text .= $comment->comment_content;
 
 		// Получаем прикрепленные изображения
 		$attchments = get_comment_meta( $comment->comment_ID, COMMENT_ATTACHMENTS_META_KEY, true );
@@ -430,9 +430,6 @@ class WP_TGComment_Notifier {
 	public static function send_media_group( $chat_id, $text, $attachment_ids = [], $comment_id = null ) {
 		$token = WP_TGComment::get_telegram_token();
 
-		// Очищаем текст от неподдерживаемых HTML тегов
-		$text = WP_TGComment_Handler::sanitize_telegram_html( $text );
-
 		// Получаем настройки плагина
 		$options = WP_TGComment::get_options();
 		$send_files_direct = isset( $options['send_files_direct'] ) ? (int)$options['send_files_direct'] : 0;
@@ -512,7 +509,7 @@ class WP_TGComment_Notifier {
 
 		// Добавляем caption к первому элементу первой медиагруппы
 		if ( $is_first_item && ! empty( $text ) ) {
-			$media_item['caption'] = $text;
+			$media_item['caption'] = WP_TGComment_Handler::sanitize_telegram_html( $text );
 			$is_first_item = false; // Больше не добавляем caption
 		}
 
